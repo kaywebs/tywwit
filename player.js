@@ -56,7 +56,8 @@ function select(track, refs) {
   }
   current = refs;
   refs.li.classList.add("active");
-  audio.src = AUDIO_BASE + track.file;
+  // encode each path segment so names with spaces, #, ? etc. still work
+  audio.src = AUDIO_BASE + track.file.split("/").map(encodeURIComponent).join("/");
   updateDetail();
   audio.play().catch(() => {});
 }
