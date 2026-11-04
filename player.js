@@ -119,12 +119,20 @@ audio.addEventListener("error", () => {
   if (current) current.time.textContent = "[could not load file]";
 });
 
-fetch("/tracks.json", { cache: "no-cache" })
-  .then((r) => {
+function getJSON(url) {
+  return fetch(url, { cache: "no-cache" }).then((r) => {
     if (!r.ok) throw new Error(r.status);
     return r.json();
-  })
+  });
+}
+
+// /api/tracks lists the R2 bucket (functions/api/tracks.js). When that isn't
+// available (e.g. a plain local server), fall back to tracks.json as the list.
+getJSON("/api/tracks")
+  .then((t) => (Array.isArray(t) ? t : Promise.reject()))
+  .catch(() => getJSON("/tracks.json"))
   .then((tracks) => {
+    tracks = tracks.filter((t) => t && t.file && !t.hidden);
     tracks.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     root.textContent = "";
     root.append(

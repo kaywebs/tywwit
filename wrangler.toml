@@ -1,0 +1,9 @@
+name = "tywwit"
+pages_build_output_dir = "."
+compatibility_date = "2026-10-01"
+
+# The audio bucket, available to functions/api/tracks.js as env.AUDIO.
+# Change bucket_name if your bucket is called something else.
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "tywwit-audio"

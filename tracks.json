@@ -2,14 +2,8 @@
   {
     "title": "Go Away",
     "date": "2026-06-01",
-    "type": "release",
-    "file": "022626 goi 2.mp3",
-    "notes": "optional line of notes shown while playing"
-  },
-  {
-    "title": "untitled sketch 3",
-    "date": "2026-09-14",
-    "type": "demo",
-    "file": "demos/sketch-3.mp3"
+    "type": "hidden",
+    "file": "",
+    "notes": ""
   }
 ]
