@@ -1,7 +1,7 @@
 // Where audio files live. Set R2_BASE to your bucket's public URL
 // (e.g. https://pub-xxxxxxxx.r2.dev/ or https://audio.tywwit.com/).
 // When running locally, files are read from ./audio/ instead.
-const R2_BASE = "https://pub-4fc5fc78c1e1432a870559c43d9b6c8b.r2.dev/";
+const R2_BASE = "https://audio.tywwit.com/";
 const LOCAL = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 const AUDIO_BASE = LOCAL ? "/audio/" : R2_BASE;
 
