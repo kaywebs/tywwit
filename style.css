@@ -110,17 +110,6 @@ ul { list-style: none; margin: 0; padding: 0; }
 }
 .track-toggle { flex: none; }
 
-.track-detail {
-  display: none;
-  padding-left: 9ch;
-  color: var(--dim);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.track.active .track-detail { display: block; }
-.track.active .track-title { text-decoration: underline; }
-.track-notes { white-space: normal; }
-
 .seek { color: var(--fg); }
 
 .other p { margin: 0 0 1em; }
@@ -138,7 +127,6 @@ ul { list-style: none; margin: 0; padding: 0; }
     padding: 40px 16px 0;
     display: block;
   }
-  .track-detail { padding-left: 0; }
 }
 
 /* ---- theme fade: only active for a moment while switching light/dark,
@@ -162,6 +150,49 @@ ul { list-style: none; margin: 0; padding: 0; }
 .song h2 { margin: 0 0 0.25em; }
 .song-meta { color: var(--dim); margin: 0 0 1.5em; }
 .song-player { margin: 0 0 1em; }
-.song .track-time { color: var(--dim); }
 .song .track-notes { margin: 0 0 1em; }
 .song-back { margin: 2.5em 0 0; }
+
+/* ---- now-playing line, fixed at the bottom of the track column ---- */
+.now-playing {
+  position: fixed;
+  bottom: 1.5vh;
+  left: 36.5vw;
+  width: 33.5vw;
+  display: flex;
+  gap: 1ch;
+  align-items: baseline;
+  white-space: nowrap;
+  background: var(--bg);
+}
+.now-playing[hidden] { display: none; }
+.np-title-wrap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 2px;
+  margin-left: -2px;
+}
+.now-playing .seek,
+.now-playing .track-time { flex: none; }
+.now-playing .track-time { color: var(--dim); }
+/* keep the end of a long list from hiding behind the bar */
+body.has-player main { padding-bottom: calc(6vh + 3em); }
+
+@media (max-width: 700px) {
+  .now-playing {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+  }
+  /* line 1: [pause] title 00:02 / 02:56   line 2: the bar */
+  .np-title-wrap { flex: 1 1 0; }
+  .now-playing .track-time { order: 2; }
+  .now-playing .seek { order: 3; flex-basis: 100%; text-align: left; }
+  body.has-player { padding-bottom: 5em; }
+  body.has-player main { padding-bottom: 0; }
+}
