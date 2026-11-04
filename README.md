@@ -68,3 +68,14 @@ The site is on GitHub Pages (custom domain in `CNAME`), and tywwit.com's DNS is 
 `/api/tracks` doesn't exist on a plain server, so the music page lists `tracks.json` instead. The player reads audio from `./audio/` (gitignored).
 
 **Worker against the real bucket:** in `worker/`, run `npx wrangler dev --remote`, then open the URL it prints followed by `/api/tracks`.
+
+## After changing style.css, theme.js or player.js
+
+Cloudflare caches `.css` and `.js` files for up to 4 hours, so visitors can keep getting the old ones.
+The HTML pages load them with a version number (`/player.js?v=2`). When you change one of those files, bump the number in all four HTML files (`index.html`, `music/index.html`, `other/index.html`, `song.html`), for example from `?v=2` to `?v=3`:
+
+```
+sed -i 's/?v=2"/?v=3"/g' index.html music/index.html other/index.html song.html
+```
+
+Or clear the cache: Cloudflare dashboard -> tywwit.com -> Caching -> Configuration -> Purge Everything.
