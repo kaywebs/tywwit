@@ -1,0 +1,155 @@
+:root {
+  --fg: #000;
+  --bg: #fff;
+  --dim: #777;
+  --current: #000;
+  --on-accent: #fff;
+  color-scheme: light;
+  --font: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+:root[data-theme="dark"] {
+  --fg: #e8e8e8;
+  --bg: #000;
+  --dim: #8a8a8a;
+  --current: #b1d7ff;
+  --on-accent: #000;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+a { color: inherit; text-decoration: none; }
+/* hover / keyboard focus: solid accent rectangle behind the text, dark text on top */
+a:hover, a:focus-visible,
+button:hover, button:focus-visible {
+  background: var(--current);
+  color: var(--on-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--current); /* pads the fill without shifting layout */
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ---- frame: nav top-left, footer bottom-left, content column ---- */
+
+.site-nav {
+  position: fixed;
+  top: 8vh;
+  left: 4.4vw;
+  line-height: 1.55;
+  font-size: 1.15rem;
+}
+.site-nav a { display: block; width: fit-content; }
+.site-nav a[aria-current="page"] { color: var(--current); }
+.site-nav a[aria-current="page"]:hover,
+.site-nav a[aria-current="page"]:focus-visible { color: var(--on-accent); }
+
+.site-footer {
+  position: fixed;
+  bottom: 1.5vh;
+  left: 3.7vw;
+  font-size: 0.75rem;
+}
+
+main {
+  margin-left: 36.5vw;
+  width: 33.5vw;
+  min-height: 100vh;
+  padding: 6vh 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* ---- content ---- */
+
+h2 {
+  font-size: 1rem;
+  font-weight: normal;
+  margin: 2em 0 0.5em;
+}
+h2:first-child { margin-top: 0; }
+
+ul { list-style: none; margin: 0; padding: 0; }
+
+.track { margin: 0.15em 0; }
+
+.track-row {
+  display: flex;
+  gap: 1ch;
+  align-items: baseline;
+}
+.track-date { color: var(--dim); flex: none; }
+.track-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+/* dot leader between title and [play] */
+.track-title::after {
+  content: " ........................................................................................................................";
+  color: var(--dim);
+}
+.track-toggle { flex: none; }
+
+.track-detail {
+  display: none;
+  padding-left: 9ch;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.track.active .track-detail { display: block; }
+.track.active .track-title { text-decoration: underline; }
+.track-notes { white-space: normal; }
+
+.seek { color: var(--fg); }
+
+.other p { margin: 0 0 1em; }
+
+/* ---- phones ---- */
+
+@media (max-width: 700px) {
+  .site-nav, .site-footer { position: static; }
+  .site-nav { padding: 24px 16px 0; }
+  .site-footer { padding: 32px 16px 16px; }
+  main {
+    margin: 0;
+    width: auto;
+    min-height: 0;
+    padding: 40px 16px 0;
+    display: block;
+  }
+  .track-detail { padding-left: 0; }
+}
+
+/* ---- theme fade: only active for a moment while switching light/dark,
+        so hovers and page loads stay instant ---- */
+.theme-fading,
+.theme-fading * {
+  transition: background-color 0.5s ease, color 0.5s ease, box-shadow 0.5s ease !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-fading, .theme-fading * { transition: none !important; }
+}
+
+/* ---- current page marquee: steps one character at a time (theme.js) ---- */
+.site-nav a.marquee { white-space: pre; }

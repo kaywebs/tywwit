@@ -1,0 +1,4 @@
+# local test audio (real audio lives in R2)
+/audio/
+node_modules/
+.wrangler/
