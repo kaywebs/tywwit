@@ -1,4 +1,6 @@
-// GET /api/tracks — lists every audio file in the R2 bucket bound as AUDIO.
+// Cloudflare Worker: answers https://tywwit.com/api/tracks by listing every
+// audio file in the R2 bucket bound as AUDIO (see worker/wrangler.toml).
+// The rest of the site is static on GitHub Pages; this only handles /api/*.
 //
 // Each file becomes a track automatically:
 //   key  "demos/late-night_sketch.mp3"
@@ -12,7 +14,20 @@
 
 const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i;
 
-export async function onRequestGet({ request, env }) {
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname.replace(/\/$/, "") !== "/api/tracks") {
+      return json({ error: "not found" }, 404);
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return json({ error: "method not allowed" }, 405);
+    }
+    return listTracks(request, env);
+  },
+};
+
+async function listTracks(request, env) {
   if (!env.AUDIO) {
     return json({ error: "R2 binding AUDIO is not configured" }, 500);
   }
@@ -58,7 +73,10 @@ function titleFromKey(key) {
 async function loadOverrides(request, env) {
   const map = new Map();
   try {
-    const res = await env.ASSETS.fetch(new URL("/tracks.json", request.url));
+    // /tracks.json isn't under /api/*, so this goes to GitHub Pages, not back to this Worker
+    const res = await fetch(new URL("/tracks.json", request.url), {
+      cf: { cacheTtl: 60 },
+    });
     if (!res.ok) return map;
     const list = await res.json();
     for (const t of list) if (t && t.file) map.set(t.file, t);

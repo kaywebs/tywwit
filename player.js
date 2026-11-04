@@ -126,7 +126,7 @@ function getJSON(url) {
   });
 }
 
-// /api/tracks lists the R2 bucket (functions/api/tracks.js). When that isn't
+// /api/tracks lists the R2 bucket (Cloudflare Worker in worker/). When that isn't
 // available (e.g. a plain local server), fall back to tracks.json as the list.
 getJSON("/api/tracks")
   .then((t) => (Array.isArray(t) ? t : Promise.reject()))

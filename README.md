@@ -1,17 +1,16 @@
 # tywwit.com
 
-A plain static site with no build step. Audio is stored in Cloudflare R2 and the site is served by Cloudflare Pages.
+A plain static site with no build step, hosted on GitHub Pages. Audio is stored in Cloudflare R2. A small Cloudflare Worker answers `tywwit.com/api/tracks` by listing the bucket.
 
 ```
 index.html        home page (blank, nav only)
 music/index.html  music page (track list + player)
 other/index.html  other page (text / links, edit directly)
-functions/api/tracks.js  lists the R2 bucket at /api/tracks (Pages Function)
+worker/           Cloudflare Worker for /api/tracks (lists the R2 bucket)
 tracks.json       optional overrides (titles, dates, notes, hidden)
 player.js         renders the track list, text-only audio player
-wrangler.toml     Pages config + the R2 bucket binding
 style.css         layout + type
-_headers          cache rules for Cloudflare Pages
+_headers          cache rules (only used on Cloudflare Pages; GitHub Pages ignores it)
 ```
 
 ## Adding a track
@@ -38,21 +37,25 @@ Add an entry to `tracks.json` matched by `file`, then commit and push:
 
 Only the fields you list are changed. Entries for files that aren't in the bucket are ignored.
 
-## One-time Cloudflare setup
+## One-time setup
 
-1. **R2 bucket**: go to Dashboard -> R2 -> Create bucket and name it `tywwit-audio`.
-   Under Settings -> Public access, enable the **r2.dev subdomain**, then copy the URL into `R2_BASE` at the top of `player.js`. Keep the trailing `/`.
-2. **Pages**: push this repo to GitHub, then go to Dashboard -> Workers & Pages -> Create -> Pages -> Connect to Git.
-   Set the build command to nothing and the output directory to `/`. The site goes live at `<project>.pages.dev`.
-   The R2 binding comes from `wrangler.toml` (binding `AUDIO` -> bucket `tywwit-audio`). If your bucket has a different name, change `bucket_name` there.
-   (Or skip GitHub: `npx wrangler pages deploy . --project-name tywwit`.)
-3. **Domain (later)**: add `tywwit.com` to Cloudflare and change the nameservers at your registrar. Then:
-   - Pages project -> Custom domains -> add `tywwit.com`
-   - R2 bucket -> Settings -> Custom domains -> add `audio.tywwit.com`, then set `R2_BASE = "https://audio.tywwit.com/"`. The r2.dev URL is rate-limited, so it's only good for the start.
+The site is on GitHub Pages (custom domain in `CNAME`), and tywwit.com's DNS is on Cloudflare with the proxy (orange cloud) on.
+
+1. **R2 bucket** `tywwit-audio`: give it the custom domain `audio.tywwit.com` (Settings -> Custom domains). `R2_BASE` in `player.js` points there.
+2. **Worker**: deploy it once from the `worker/` folder:
+   ```
+   cd worker
+   npx wrangler login
+   npx wrangler deploy
+   ```
+   This creates the `tywwit-api` Worker, connects it to the bucket, and routes `tywwit.com/api/*` to it. Every other path still goes to GitHub Pages.
+   If your bucket has a different name, change `bucket_name` in `worker/wrangler.toml` first.
+   You only need to redeploy when `worker/tracks.js` changes. New audio files don't need a redeploy.
+3. **Check**: https://tywwit.com/api/tracks should return a JSON list of your files.
 
 ## Local preview
 
 **Quick (no R2):** run `python -m http.server 8000` and open http://localhost:8000.
 `/api/tracks` doesn't exist on a plain server, so the music page lists `tracks.json` instead. The player reads audio from `./audio/` (gitignored).
 
-**With the function:** run `npx wrangler pages dev .`. This runs `/api/tracks` against a local, empty copy of the bucket. To fill it, run `npx wrangler r2 object put tywwit-audio/test.mp3 --file ./test.mp3 --local`.
+**Worker against the real bucket:** in `worker/`, run `npx wrangler dev --remote`, then open the URL it prints followed by `/api/tracks`.

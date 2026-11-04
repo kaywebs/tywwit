@@ -1,0 +1,15 @@
+# Deploy from this folder:  npx wrangler deploy
+name = "tywwit-api"
+main = "tracks.js"
+compatibility_date = "2026-10-01"
+
+# Only /api/* on tywwit.com goes to this Worker. Everything else still goes to GitHub Pages.
+routes = [
+  { pattern = "tywwit.com/api/*", zone_name = "tywwit.com" },
+]
+
+# The audio bucket, available as env.AUDIO.
+# Change bucket_name if your bucket is called something else.
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "tywwit-audio"
