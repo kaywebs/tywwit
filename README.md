@@ -6,7 +6,8 @@ A plain static site with no build step, hosted on GitHub Pages. Audio is stored 
 index.html        home page (blank, nav only)
 music/index.html  music page (track list + player)
 other/index.html  other page (text / links, edit directly)
-worker/           Cloudflare Worker for /api/tracks (lists the R2 bucket)
+song.html         page for one song, served at /song/<slug> by the Worker
+worker/           Cloudflare Worker for /api/tracks (lists the R2 bucket) and /song/*
 tracks.json       optional overrides (titles, dates, notes, hidden)
 player.js         renders the track list, text-only audio player
 style.css         layout + type
@@ -23,6 +24,14 @@ Upload the audio file to the R2 bucket. That's all. It appears on the music page
 - The title comes from the filename: `late-night_sketch.mp3` becomes `late night sketch`.
 - The date is the upload date. Tracks are sorted newest first.
 - Only audio files are listed (mp3, m4a, aac, ogg, opus, wav, flac, webm).
+
+### Song pages
+
+Every track has its own page, and its title on the music page links there:
+`https://tywwit.com/song/<slug>`, where the slug is the title in lowercase with dashes (`Like me too` -> `/song/like-me-too`).
+If two tracks share a title, the second one gets `-2`.
+Renaming a track changes its link. To keep a link fixed, set `"slug"` for that file in `tracks.json`.
+Locally (plain python server), song links use `/song.html?t=<slug>` instead.
 
 ### Changing a title, date or notes, or hiding a file (optional)
 
@@ -48,7 +57,7 @@ The site is on GitHub Pages (custom domain in `CNAME`), and tywwit.com's DNS is 
    npx wrangler login
    npx wrangler deploy
    ```
-   This creates the `tywwit-api` Worker, connects it to the bucket, and routes `tywwit.com/api/*` to it. Every other path still goes to GitHub Pages.
+   This creates the `tywwit-api` Worker, connects it to the bucket, and routes `tywwit.com/api/*` and `tywwit.com/song/*` to it. Every other path still goes to GitHub Pages.
    If your bucket has a different name, change `bucket_name` in `worker/wrangler.toml` first.
    You only need to redeploy when `worker/tracks.js` changes. New audio files don't need a redeploy.
 3. **Check**: https://tywwit.com/api/tracks should return a JSON list of your files.

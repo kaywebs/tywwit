@@ -73,7 +73,11 @@ function renderTrack(track) {
   const toggle = el("button", "track-toggle", "[play]");
   toggle.type = "button";
   toggle.setAttribute("aria-label", "play " + track.title);
-  row.append(el("span", "track-date", fmtDate(track.date)), el("span", "track-title", track.title), toggle);
+  const title = el("span", "track-title");
+  const link = el("a", null, track.title);
+  link.href = songUrl(track);
+  title.append(link);
+  row.append(el("span", "track-date", fmtDate(track.date)), title, toggle);
 
   const detail = el("div", "track-detail");
   const seek = el("button", "seek", bar(0));
@@ -127,21 +131,117 @@ function getJSON(url) {
   });
 }
 
+// "Like me too" -> "like-me-too". Keep in sync with slugify() in worker/tracks.js.
+function slugify(s) {
+  return String(s)
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "track";
+}
+
+// The Worker serves /song/<slug>. A plain local server can't, so use song.html?t=<slug>.
+function songUrl(track) {
+  return LOCAL ? "/song.html?t=" + encodeURIComponent(track.slug) : "/song/" + encodeURIComponent(track.slug);
+}
+
+// one song, with its player line always open (song.html)
+function renderSong(track) {
+  const box = el("div", "song active");
+  box.append(el("h2", null, track.title));
+  box.append(el("p", "song-meta", fmtDate(track.date) + " " + (track.type === "demo" ? "demo" : "release")));
+
+  const line = el("p", "song-player");
+  const toggle = el("button", "track-toggle", "[play]");
+  toggle.type = "button";
+  toggle.setAttribute("aria-label", "play " + track.title);
+  const seek = el("button", "seek", bar(0));
+  seek.type = "button";
+  seek.setAttribute("aria-label", "seek (arrow keys skip 5s)");
+  const time = el("span", "track-time", "--:-- / --:--");
+  line.append(toggle, " ", seek, " ", time);
+  box.append(line);
+
+  if (track.notes) box.append(el("p", "track-notes", track.notes));
+
+  const back = el("a", null, "<- all music");
+  back.href = "/music/";
+  const p = el("p", "song-back");
+  p.append(back);
+  box.append(p);
+
+  const refs = { li: box, toggle, time, bar: seek };
+  toggle.addEventListener("click", () => select(track, refs));
+  seek.addEventListener("click", (e) => {
+    if (e.detail === 0) return;
+    const r = seek.getBoundingClientRect();
+    seekTo((e.clientX - r.left) / r.width);
+  });
+  seek.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") { audio.currentTime += 5; e.preventDefault(); }
+    if (e.key === "ArrowLeft") { audio.currentTime -= 5; e.preventDefault(); }
+  });
+  return box;
+}
+
 // /api/tracks lists the R2 bucket (Cloudflare Worker in worker/). When that isn't
 // available (e.g. a plain local server), fall back to tracks.json as the list.
-getJSON("/api/tracks")
-  .then((t) => (Array.isArray(t) ? t : Promise.reject()))
-  .catch(() => getJSON("/tracks.json"))
-  .then((tracks) => {
-    tracks = tracks.filter((t) => t && t.file && !t.hidden);
-    tracks.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-    root.textContent = "";
-    root.append(
-      renderGroup("releases", tracks.filter((t) => t.type !== "demo")),
-      renderGroup("demos", tracks.filter((t) => t.type === "demo"))
-    );
-    if (!tracks.length) root.textContent = "nothing here yet.";
-  })
-  .catch(() => {
-    root.textContent = "could not load tracks.";
-  });
+function loadTracks() {
+  return getJSON("/api/tracks")
+    .then((t) => (Array.isArray(t) ? t : Promise.reject()))
+    .catch(() => getJSON("/tracks.json"))
+    .then((tracks) => {
+      tracks = tracks.filter((t) => t && t.file && !t.hidden);
+      // same order as the Worker (by file), so duplicate titles get the same suffixes
+      const used = new Set();
+      [...tracks].sort((a, b) => a.file.localeCompare(b.file)).forEach((t) => {
+        if (!t.slug) {
+          let s = slugify(t.title), base = s;
+          for (let n = 2; used.has(s); n++) s = base + "-" + n;
+          t.slug = s;
+        }
+        used.add(t.slug);
+      });
+      tracks.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      return tracks;
+    });
+}
+
+const songRoot = document.getElementById("song");
+
+if (root) {
+  loadTracks()
+    .then((tracks) => {
+      root.textContent = "";
+      root.append(
+        renderGroup("releases", tracks.filter((t) => t.type !== "demo")),
+        renderGroup("demos", tracks.filter((t) => t.type === "demo"))
+      );
+      if (!tracks.length) root.textContent = "nothing here yet.";
+    })
+    .catch(() => {
+      root.textContent = "could not load tracks.";
+    });
+}
+
+if (songRoot) {
+  const m = location.pathname.match(/^\/song\/([^/]+)/);
+  const slug = (m ? decodeURIComponent(m[1]) : new URLSearchParams(location.search).get("t") || "").toLowerCase();
+  loadTracks()
+    .then((tracks) => {
+      const track = tracks.find((t) => t.slug === slug);
+      songRoot.textContent = "";
+      if (!track) {
+        songRoot.append(el("p", null, "song not found."));
+        const back = el("a", null, "<- all music");
+        back.href = "/music/";
+        songRoot.append(back);
+        return;
+      }
+      document.title = track.title + " - tywwit.com";
+      songRoot.append(renderSong(track));
+    })
+    .catch(() => {
+      songRoot.textContent = "could not load song.";
+    });
+}

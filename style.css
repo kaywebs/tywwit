@@ -153,3 +153,15 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 /* ---- current page marquee: steps one character at a time (theme.js) ---- */
 .site-nav a.marquee { white-space: pre; }
+
+/* ---- song titles link to their own page ---- */
+/* a little room so the hover box isn't clipped by the title's overflow */
+.track-title { padding-left: 2px; margin-left: -2px; }
+
+/* ---- single song page (song.html) ---- */
+.song h2 { margin: 0 0 0.25em; }
+.song-meta { color: var(--dim); margin: 0 0 1.5em; }
+.song-player { margin: 0 0 1em; }
+.song .track-time { color: var(--dim); }
+.song .track-notes { margin: 0 0 1em; }
+.song-back { margin: 2.5em 0 0; }

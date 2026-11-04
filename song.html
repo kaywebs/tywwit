@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- served for every /song/<slug> by the Worker, which fills in these tags per song -->
+  <title>song - tywwit.com</title>
+  <meta name="description" content="music by Tyler Witkowski">
+  <meta property="og:type" content="music.song">
+  <meta property="og:site_name" content="tywwit.com">
+  <meta property="og:title" content="song - tywwit.com">
+  <meta property="og:description" content="music by Tyler Witkowski">
+  <meta property="og:url" content="https://tywwit.com/music/">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&display=swap">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/theme.js"></script>
+</head>
+<body>
+  <nav class="site-nav">
+    <a href="/" class="site-title">tywwit.com</a>
+    <a href="/music/" aria-current="page">-music----</a>
+    <a href="/other/">----other-</a>
+  </nav>
+
+  <main>
+    <div id="song">loading...</div>
+  </main>
+
+  <footer class="site-footer">
+    <button type="button" class="theme-toggle" aria-label="switch light/dark mode">[dark]</button><br>
+    (c) Tyler Witkowski
+  </footer>
+
+  <audio id="audio" preload="none"></audio>
+  <script src="/player.js"></script>
+</body>
+</html>
