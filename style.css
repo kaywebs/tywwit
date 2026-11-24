@@ -160,12 +160,25 @@ ul { list-style: none; margin: 0; padding: 0; }
   left: 36.5vw;
   width: 33.5vw;
   display: flex;
-  gap: 1ch;
+  flex-wrap: wrap;
+  gap: 0 1ch;
   align-items: baseline;
   white-space: nowrap;
   background: var(--bg);
 }
 .now-playing[hidden] { display: none; }
+/* line 2: progress bar on the left, volume on the right */
+.np-line2 {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0 2ch;
+}
+.np-vol[hidden] { display: none; }
+.np-vol .vol-mute { color: var(--dim); }
+.np-vol .vol-mute:hover,
+.np-vol .vol-mute:focus-visible { color: var(--on-accent); }
 .np-title-wrap {
   flex: 1;
   min-width: 0;
@@ -178,7 +191,7 @@ ul { list-style: none; margin: 0; padding: 0; }
 .now-playing .track-time { flex: none; }
 .now-playing .track-time { color: var(--dim); }
 /* keep the end of a long list from hiding behind the bar */
-body.has-player main { padding-bottom: calc(6vh + 3em); }
+body.has-player main { padding-bottom: calc(6vh + 4.5em); }
 
 @media (max-width: 700px) {
   .now-playing {
@@ -187,12 +200,9 @@ body.has-player main { padding-bottom: calc(6vh + 3em); }
     bottom: 0;
     width: auto;
     padding: 10px 16px;
-    flex-wrap: wrap;
   }
-  /* line 1: [pause] title 00:02 / 02:56   line 2: the bar */
+  /* line 1: [pause] title 00:02 / 02:56   line 2: the bar; volume wraps below if it doesn't fit */
   .np-title-wrap { flex: 1 1 0; }
-  .now-playing .track-time { order: 2; }
-  .now-playing .seek { order: 3; flex-basis: 100%; text-align: left; }
-  body.has-player { padding-bottom: 5em; }
+  body.has-player { padding-bottom: 6.5em; }
   body.has-player main { padding-bottom: 0; }
 }

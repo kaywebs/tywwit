@@ -35,8 +35,9 @@ function bar(fraction) {
   return "[" + "=".repeat(filled) + "-".repeat(BAR_WIDTH - filled) + "]";
 }
 
-// ---- now-playing line, fixed to the bottom of the page ----
-// [pause] title ............ [=======-------------] 00:02 / 02:56
+// ---- now-playing bar, fixed to the bottom of the page ----
+// [pause] title                         00:02 / 02:56
+// [=======-------------]              vol [=======---]
 
 const np = el("div", "now-playing");
 np.hidden = true;
@@ -50,8 +51,66 @@ npSeek.setAttribute("aria-label", "seek (arrow keys skip 5s)");
 const npTime = el("span", "track-time", "--:-- / --:--");
 const npTitleWrap = el("span", "np-title-wrap");
 npTitleWrap.append(npTitle);
-np.append(npToggle, npTitleWrap, npSeek, npTime);
+
+// volume: "vol" mutes/unmutes, the bar sets the level (click a cell, or arrow keys)
+const VOL_CELLS = 10;
+const npVol = el("span", "np-vol");
+const npMute = el("button", "vol-mute", "vol");
+npMute.type = "button";
+npMute.setAttribute("aria-label", "mute");
+const npVolBar = el("button", "vol-bar");
+npVolBar.type = "button";
+npVolBar.setAttribute("aria-label", "volume (arrow keys change it)");
+npVol.append(npMute, " ", npVolBar);
+
+const npLine2 = el("div", "np-line2");
+npLine2.append(npSeek, npVol);
+np.append(npToggle, npTitleWrap, npTime, npLine2);
 document.body.append(np);
+
+let level = 1; // 0..1 as shown on the bar; the audio gets level² so steps sound even
+try {
+  const saved = parseFloat(localStorage.getItem("volume"));
+  if (saved >= 0 && saved <= 1) level = saved;
+} catch (e) {}
+
+function setLevel(v) {
+  level = Math.round(Math.max(0, Math.min(1, v)) * VOL_CELLS) / VOL_CELLS;
+  audio.volume = level * level;
+  audio.muted = false;
+  try { localStorage.setItem("volume", String(level)); } catch (e) {}
+  drawVolume();
+}
+
+function drawVolume() {
+  const filled = audio.muted ? 0 : Math.round(level * VOL_CELLS);
+  npVolBar.textContent = "[" + "=".repeat(filled) + "-".repeat(VOL_CELLS - filled) + "]";
+  npVolBar.setAttribute("aria-valuetext", audio.muted ? "muted" : Math.round(level * 100) + "%");
+  npMute.textContent = audio.muted ? "off" : "vol";
+  npMute.setAttribute("aria-label", audio.muted ? "unmute" : "mute");
+}
+
+npMute.addEventListener("click", () => {
+  audio.muted = !audio.muted;
+  drawVolume();
+});
+npVolBar.addEventListener("click", (e) => {
+  if (e.detail === 0) return; // keyboard "click": ignore
+  const r = npVolBar.getBoundingClientRect();
+  // which character was clicked: "[" = silent, "]" = full, cells in between = 10%..100%
+  const ch = Math.floor(((e.clientX - r.left) / r.width) * (VOL_CELLS + 2));
+  setLevel(Math.max(0, Math.min(VOL_CELLS, ch)) / VOL_CELLS);
+});
+npVolBar.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowRight" || e.key === "ArrowUp") { setLevel(level + 1 / VOL_CELLS); e.preventDefault(); }
+  if (e.key === "ArrowLeft" || e.key === "ArrowDown") { setLevel(level - 1 / VOL_CELLS); e.preventDefault(); }
+});
+
+// some browsers (iPhone/iPad Safari) don't let pages change volume: hide the control there
+audio.volume = 0.5;
+if (audio.volume !== 0.5) npVol.hidden = true;
+audio.volume = level * level;
+drawVolume();
 
 npToggle.addEventListener("click", () => {
   if (audio.paused) audio.play().catch(() => {});
