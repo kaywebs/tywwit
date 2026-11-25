@@ -81,12 +81,45 @@ volMute.addEventListener("click", () => {
   audio.muted = !audio.muted;
   drawVolume();
 });
-volBar.addEventListener("click", (e) => {
-  if (e.detail === 0) return; // keyboard "click": ignore
-  const r = volBar.getBoundingClientRect();
-  // which character was clicked: "[" = silent, "]" = full, cells in between = 10%..100%
-  const ch = Math.floor(((e.clientX - r.left) / r.width) * (VOL_CELLS + 2));
-  setLevel(Math.max(0, Math.min(VOL_CELLS, ch)) / VOL_CELLS);
+// Press-and-drag on a bar (mouse, pen or touch). onMove(fraction) runs on press
+// and while dragging; onEnd(fraction) on release; onCancel if the browser takes
+// the gesture over (e.g. the page starts scrolling). fraction is 0..1 across the bar.
+function draggable(target, { onMove, onEnd, onCancel }) {
+  target.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault(); // no text selection while dragging
+    target.focus({ preventScroll: true });
+    const fracAt = (ev) => {
+      const rect = target.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+    };
+    try { target.setPointerCapture(e.pointerId); } catch (err) {}
+    const move = (ev) => { if (onMove) onMove(fracAt(ev)); };
+    const finish = (ev, ok) => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+      target.removeEventListener("pointercancel", cancel);
+      if (ok) { if (onEnd) onEnd(fracAt(ev)); } else if (onCancel) onCancel();
+    };
+    const up = (ev) => finish(ev, true);
+    const cancel = (ev) => finish(ev, false);
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up);
+    target.addEventListener("pointercancel", cancel);
+    move(e);
+  });
+}
+
+// "[" = silent, "]" = full, the cells in between = 10%..100%
+function volumeAt(fraction) {
+  const ch = Math.floor(fraction * (VOL_CELLS + 2));
+  return Math.max(0, Math.min(VOL_CELLS, ch)) / VOL_CELLS;
+}
+
+// the volume changes live while dragging
+draggable(volBar, {
+  onMove: (f) => setLevel(volumeAt(f)),
+  onEnd: (f) => setLevel(volumeAt(f)),
 });
 volBar.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight" || e.key === "ArrowUp") { setLevel(level + 1 / VOL_CELLS); e.preventDefault(); }
@@ -183,14 +216,19 @@ function allRows() {
 function drawBar(r) {
   if (!chPx) measureCh();
   const n = Math.max(0, Math.floor(r.bar.clientWidth / chPx + 0.01));
-  const filled = Math.min(n, Math.round(r.frac * n));
+  const f = r.dragging ? r.dragFrac : r.frac; // while dragging, show where it will land
+  const filled = Math.min(n, Math.round(f * n));
   r.played.textContent = "=".repeat(filled);
   r.rest.textContent = ".".repeat(n - filled);
 }
 
 function drawTime(r) {
   const before = r.time.textContent.length;
-  if (r === current) {
+  if (r.dragging) {
+    // preview the time you'd jump to
+    const d = r === current && isFinite(audio.duration) ? audio.duration : knownDuration(r.track);
+    r.time.textContent = d ? fmtTime(r.dragFrac * d) + " / " + fmtTime(d) : "--:--";
+  } else if (r === current) {
     const d = isFinite(audio.duration) ? audio.duration : knownDuration(r.track);
     // until the new file has loaded, audio.currentTime can still be the previous song's
     const t = audio.readyState > 0 ? audio.currentTime : (pendingSeek && d ? pendingSeek * d : 0);
@@ -369,10 +407,26 @@ function renderTrack(track, opts) {
   drawTime(r);
 
   toggle.addEventListener("click", () => select(r));
-  bar.addEventListener("click", (e) => {
-    if (e.detail === 0) return; // keyboard "click" (enter/space): ignore
-    const rect = bar.getBoundingClientRect();
-    select(r, (e.clientX - rect.left) / rect.width);
+  // while dragging, the dots and time only preview the new spot; the song jumps there on release
+  draggable(bar, {
+    onMove: (f) => {
+      r.dragging = true;
+      r.dragFrac = f;
+      drawBar(r);
+      drawTime(r);
+    },
+    onEnd: (f) => {
+      r.dragging = false;
+      r.frac = f; // show the new spot right away, before the audio reports it
+      select(r, f);
+      drawBar(r);
+      drawTime(r);
+    },
+    onCancel: () => {
+      r.dragging = false;
+      drawBar(r);
+      drawTime(r);
+    },
   });
   bar.addEventListener("keydown", (e) => {
     if (current !== r) return;

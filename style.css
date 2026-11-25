@@ -205,3 +205,13 @@ body.has-mini main { padding-bottom: calc(6vh + 2em); }
   body.has-mini { padding-bottom: 3.5em; }
   body.has-mini main { padding-bottom: 0; }
 }
+
+/* ---- dragging the progress and volume bars ---- */
+.track-bar,
+.vol-bar {
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* on touch screens: sideways drags move the bar, up/down still scrolls the page */
+.track-bar { touch-action: pan-y; }
+.vol-bar { touch-action: none; }
