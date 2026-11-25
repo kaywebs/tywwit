@@ -87,8 +87,10 @@ volMute.addEventListener("click", () => {
 function draggable(target, { onMove, onEnd, onCancel }) {
   target.addEventListener("pointerdown", (e) => {
     if (e.button !== 0) return;
-    e.preventDefault(); // no text selection while dragging
-    target.focus({ preventScroll: true });
+    // no text selection while dragging. This also stops the press from focusing the
+    // bar, so the highlight box doesn't stay on after the mouse leaves; keyboard
+    // users still reach the bars with Tab.
+    e.preventDefault();
     const fracAt = (ev) => {
       const rect = target.getBoundingClientRect();
       return Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
