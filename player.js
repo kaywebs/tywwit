@@ -5,12 +5,15 @@ const R2_BASE = "https://audio.tywwit.com/";
 const LOCAL = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 const AUDIO_BASE = LOCAL ? "/audio/" : R2_BASE;
 
-const BAR_WIDTH = 20; // characters in the [=====-----] progress bar
-
 const audio = document.getElementById("audio");
 const root = document.getElementById("tracks");
 const songRoot = document.getElementById("song");
-let current = null; // { track, toggle } for the track that's loaded
+
+// Each track row looks like:
+//   2026.11 [pause] kehler is a weeb ======............ 00:42 / 02:56
+// The dots are the progress bar: they fill with "=" as the song plays.
+let current = null;     // the row whose song is loaded in <audio>
+let pendingSeek = null; // 0..1, applied once the loading song's length is known
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -30,43 +33,23 @@ function fmtDate(d) {
   return (d || "").slice(0, 7).replace("-", ".") || "----.--";
 }
 
-function bar(fraction) {
-  const filled = Math.round((fraction || 0) * BAR_WIDTH);
-  return "[" + "=".repeat(filled) + "-".repeat(BAR_WIDTH - filled) + "]";
+// encode each path segment so names with spaces, #, ? etc. still work
+function audioUrl(track) {
+  return AUDIO_BASE + track.file.split("/").map(encodeURIComponent).join("/");
 }
 
-// ---- now-playing bar, fixed to the bottom of the page ----
-// [pause] title                         00:02 / 02:56
-// [=======-------------]              vol [=======---]
+// ---- volume: "vol [=======---]" on the heading line ----
+// "vol" mutes/unmutes, the bar sets the level (click a cell, or arrow keys)
 
-const np = el("div", "now-playing");
-np.hidden = true;
-np.setAttribute("aria-label", "now playing");
-const npToggle = el("button", "track-toggle", "[play]");
-npToggle.type = "button";
-const npTitle = el("a", "np-title");
-const npSeek = el("button", "seek", bar(0));
-npSeek.type = "button";
-npSeek.setAttribute("aria-label", "seek (arrow keys skip 5s)");
-const npTime = el("span", "track-time", "--:-- / --:--");
-const npTitleWrap = el("span", "np-title-wrap");
-npTitleWrap.append(npTitle);
-
-// volume: "vol" mutes/unmutes, the bar sets the level (click a cell, or arrow keys)
 const VOL_CELLS = 10;
-const npVol = el("span", "np-vol");
-const npMute = el("button", "vol-mute", "vol");
-npMute.type = "button";
-npMute.setAttribute("aria-label", "mute");
-const npVolBar = el("button", "vol-bar");
-npVolBar.type = "button";
-npVolBar.setAttribute("aria-label", "volume (arrow keys change it)");
-npVol.append(npMute, " ", npVolBar);
-
-const npLine2 = el("div", "np-line2");
-npLine2.append(npSeek, npVol);
-np.append(npToggle, npTitleWrap, npTime, npLine2);
-document.body.append(np);
+const volBox = el("span", "vol-box");
+const volMute = el("button", "vol-mute", "vol");
+volMute.type = "button";
+volMute.setAttribute("aria-label", "mute");
+const volBar = el("button", "vol-bar");
+volBar.type = "button";
+volBar.setAttribute("aria-label", "volume (arrow keys change it)");
+volBox.append(volMute, " ", volBar);
 
 let level = 1; // 0..1 as shown on the bar; the audio gets level² so steps sound even
 try {
@@ -84,137 +67,321 @@ function setLevel(v) {
 
 function drawVolume() {
   const filled = audio.muted ? 0 : Math.round(level * VOL_CELLS);
-  npVolBar.textContent = "[" + "=".repeat(filled) + "-".repeat(VOL_CELLS - filled) + "]";
-  npVolBar.setAttribute("aria-valuetext", audio.muted ? "muted" : Math.round(level * 100) + "%");
-  npMute.textContent = audio.muted ? "off" : "vol";
-  npMute.setAttribute("aria-label", audio.muted ? "unmute" : "mute");
+  volBar.textContent = "[" + "=".repeat(filled) + "-".repeat(VOL_CELLS - filled) + "]";
+  volBar.setAttribute("aria-valuetext", audio.muted ? "muted" : Math.round(level * 100) + "%");
+  volMute.textContent = audio.muted ? "off" : "vol";
+  volMute.setAttribute("aria-label", audio.muted ? "unmute" : "mute");
 }
 
-npMute.addEventListener("click", () => {
+volMute.addEventListener("click", () => {
   audio.muted = !audio.muted;
   drawVolume();
 });
-npVolBar.addEventListener("click", (e) => {
+volBar.addEventListener("click", (e) => {
   if (e.detail === 0) return; // keyboard "click": ignore
-  const r = npVolBar.getBoundingClientRect();
+  const r = volBar.getBoundingClientRect();
   // which character was clicked: "[" = silent, "]" = full, cells in between = 10%..100%
   const ch = Math.floor(((e.clientX - r.left) / r.width) * (VOL_CELLS + 2));
   setLevel(Math.max(0, Math.min(VOL_CELLS, ch)) / VOL_CELLS);
 });
-npVolBar.addEventListener("keydown", (e) => {
+volBar.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight" || e.key === "ArrowUp") { setLevel(level + 1 / VOL_CELLS); e.preventDefault(); }
   if (e.key === "ArrowLeft" || e.key === "ArrowDown") { setLevel(level - 1 / VOL_CELLS); e.preventDefault(); }
 });
 
 // some browsers (iPhone/iPad Safari) don't let pages change volume: hide the control there
 audio.volume = 0.5;
-if (audio.volume !== 0.5) npVol.hidden = true;
+if (audio.volume !== 0.5) volBox.hidden = true;
 audio.volume = level * level;
 drawVolume();
 
-npToggle.addEventListener("click", () => {
-  if (audio.paused) audio.play().catch(() => {});
-  else audio.pause();
-});
-npSeek.addEventListener("click", (e) => {
-  if (e.detail === 0) return; // keyboard "click" (enter/space): ignore
-  const r = npSeek.getBoundingClientRect();
-  seekTo((e.clientX - r.left) / r.width);
-});
-npSeek.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowRight") { audio.currentTime += 5; e.preventDefault(); }
-  if (e.key === "ArrowLeft") { audio.currentTime -= 5; e.preventDefault(); }
-});
+// ---- song lengths: remembered in this browser, measured in the background ----
 
-function updateProgress() {
-  if (!current) return;
-  const frac = audio.duration ? audio.currentTime / audio.duration : 0;
-  npSeek.textContent = bar(frac);
-  npTime.textContent = fmtTime(audio.currentTime) + " / " + fmtTime(audio.duration);
+const DUR_KEY = "durations-v1";
+let durations = {};
+try { durations = JSON.parse(localStorage.getItem(DUR_KEY)) || {}; } catch (e) {}
+
+// a remembered length only counts if the track's date still matches (a re-upload gets re-measured)
+function knownDuration(track) {
+  const e = durations[track.file];
+  return e && e.date === (track.date || "") ? e.d : null;
 }
+
+function saveDuration(track, d) {
+  if (!isFinite(d) || d <= 0) return;
+  durations[track.file] = { d: Math.round(d * 10) / 10, date: track.date || "" };
+  try { localStorage.setItem(DUR_KEY, JSON.stringify(durations)); } catch (e) {}
+  (rowsByFile.get(track.file) || []).forEach(drawTime);
+}
+
+// reads just enough of a file to learn its length; null if it fails or takes >15s
+function probeDuration(track) {
+  return new Promise((resolve) => {
+    const a = new Audio();
+    a.preload = "metadata";
+    a.muted = true;
+    let done = false;
+    const finish = (d) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      a.removeAttribute("src"); // stop downloading
+      try { a.load(); } catch (e) {}
+      resolve(d);
+    };
+    const timer = setTimeout(() => finish(null), 15000);
+    a.addEventListener("loadedmetadata", () => finish(isFinite(a.duration) ? a.duration : null));
+    a.addEventListener("error", () => finish(null));
+    a.src = audioUrl(track);
+  });
+}
+
+let measureGen = 0; // bumped on every re-render, so an old queue stops
+function measureDurations(tracks) {
+  const gen = ++measureGen;
+  const todo = tracks.filter((t) => knownDuration(t) == null);
+  let i = 0;
+  const next = () => {
+    if (gen !== measureGen || i >= todo.length) return;
+    const t = todo[i++];
+    probeDuration(t)
+      .then((d) => { if (d) saveDuration(t, d); })
+      .finally(next);
+  };
+  next(); next(); // two at a time
+}
+
+// ---- drawing the dots / progress bar ----
+
+let chPx = 0; // width of one character in the row font
+
+function measureCh() {
+  const probe = el("span", null, "0000000000");
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+  (root || songRoot || document.body).append(probe);
+  chPx = probe.getBoundingClientRect().width / 10 || 9.6;
+  probe.remove();
+}
+
+const rowsByFile = new Map(); // file -> [row refs], for filling in lengths
+const rowByBar = new WeakMap();
+const resizeObs = typeof ResizeObserver !== "undefined"
+  ? new ResizeObserver((entries) => entries.forEach((e) => {
+      const r = rowByBar.get(e.target);
+      if (r) drawBar(r);
+    }))
+  : null;
+
+function allRows() {
+  return [].concat(...rowsByFile.values());
+}
+
+function drawBar(r) {
+  if (!chPx) measureCh();
+  const n = Math.max(0, Math.floor(r.bar.clientWidth / chPx + 0.01));
+  const filled = Math.min(n, Math.round(r.frac * n));
+  r.played.textContent = "=".repeat(filled);
+  r.rest.textContent = ".".repeat(n - filled);
+}
+
+function drawTime(r) {
+  const before = r.time.textContent.length;
+  if (r === current) {
+    const d = isFinite(audio.duration) ? audio.duration : knownDuration(r.track);
+    // until the new file has loaded, audio.currentTime can still be the previous song's
+    const t = audio.readyState > 0 ? audio.currentTime : (pendingSeek && d ? pendingSeek * d : 0);
+    r.time.textContent = fmtTime(t) + " / " + fmtTime(d);
+  } else {
+    const d = knownDuration(r.track);
+    r.time.textContent = d ? fmtTime(d) : "--:--";
+  }
+  // "03:12" <-> "00:42 / 03:12" changes how much room the dots have: redraw them now
+  if (r.time.textContent.length !== before) drawBar(r);
+}
+
+// the real font (IBM Plex Mono) arrives after the fallback, with a different width
+if (document.fonts && document.fonts.ready) {
+  const remeasure = () => { measureCh(); allRows().forEach(drawBar); };
+  document.fonts.ready.then(remeasure);
+  document.fonts.addEventListener && document.fonts.addEventListener("loadingdone", remeasure);
+}
+window.addEventListener("resize", () => allRows().forEach(drawBar));
+
+// ---- playback ----
 
 function updateToggle() {
   if (!current) return;
-  const label = audio.paused ? "[play]" : "[pause]";
-  current.toggle.textContent = label;
-  npToggle.textContent = label;
+  current.toggle.textContent = audio.paused ? "[play]" : "[pause]";
+  current.toggle.setAttribute("aria-label", (audio.paused ? "play " : "pause ") + current.track.title);
 }
 
-function select(track, toggle) {
-  if (current && current.toggle === toggle) {
-    if (audio.paused) audio.play().catch(() => {});
-    else audio.pause();
-    return;
-  }
-  if (current) current.toggle.textContent = "[play]";
-  current = { track, toggle };
-  // encode each path segment so names with spaces, #, ? etc. still work
-  audio.src = AUDIO_BASE + track.file.split("/").map(encodeURIComponent).join("/");
-  npTitle.textContent = track.title;
-  npTitle.href = songUrl(track);
-  npToggle.setAttribute("aria-label", "play/pause " + track.title);
-  np.hidden = false;
-  document.body.classList.add("has-player");
-  updateProgress();
+function resetRow(r) {
+  r.li.classList.remove("playing");
+  r.frac = 0;
+  r.toggle.textContent = "[play]";
+  r.toggle.setAttribute("aria-label", "play " + r.track.title);
+  drawBar(r);
+  drawTime(r);
+}
+
+function play() {
   audio.play().catch(() => {});
 }
 
-function seekTo(fraction) {
-  if (!audio.duration) return;
-  audio.currentTime = Math.max(0, Math.min(1, fraction)) * audio.duration;
+// start (or pause/resume) a row's song; seekFrac (0..1) jumps to that point
+function select(r, seekFrac) {
+  if (current === r) {
+    if (seekFrac != null) {
+      seekTo(seekFrac);
+      if (audio.paused) play();
+    } else if (audio.paused) {
+      play();
+    } else {
+      audio.pause();
+    }
+    return;
+  }
+  if (current) {
+    const prev = current;
+    current = null;
+    resetRow(prev);
+  }
+  current = r;
+  r.li.classList.add("playing");
+  pendingSeek = seekFrac != null ? seekFrac : null;
+  audio.src = audioUrl(r.track);
+  r.frac = seekFrac || 0;
+  drawBar(r);
+  drawTime(r);
+  play();
 }
 
+function seekTo(fraction) {
+  fraction = Math.max(0, Math.min(1, fraction));
+  if (isFinite(audio.duration) && audio.duration > 0) audio.currentTime = fraction * audio.duration;
+  else pendingSeek = fraction;
+}
+
+function updateProgress() {
+  if (!current) return;
+  if (isFinite(audio.duration) && audio.duration > 0) current.frac = audio.currentTime / audio.duration;
+  drawBar(current);
+  drawTime(current);
+}
+
+audio.addEventListener("loadedmetadata", () => {
+  if (!current) return;
+  saveDuration(current.track, audio.duration);
+  if (pendingSeek != null) {
+    const f = pendingSeek;
+    pendingSeek = null;
+    seekTo(f);
+  }
+  updateProgress();
+});
+audio.addEventListener("durationchange", () => {
+  if (current) saveDuration(current.track, audio.duration);
+});
 audio.addEventListener("timeupdate", updateProgress);
-audio.addEventListener("loadedmetadata", updateProgress);
 audio.addEventListener("play", updateToggle);
 audio.addEventListener("pause", updateToggle);
 audio.addEventListener("ended", updateToggle);
 audio.addEventListener("error", () => {
-  if (current) npTime.textContent = "[could not load file]";
+  if (current && audio.getAttribute("src")) current.time.textContent = "[error]";
 });
 
-// ---- music page list ----
+// ---- track rows ----
 
-function renderTrack(track) {
+// compact: no date or title (used on a song's own page)
+function renderTrack(track, compact) {
   const li = el("li", "track");
   const row = el("div", "track-row");
+  if (!compact) row.append(el("span", "track-date", fmtDate(track.date)));
+
+  const cell = el("span", "toggle-cell");
   const toggle = el("button", "track-toggle", "[play]");
   toggle.type = "button";
   toggle.setAttribute("aria-label", "play " + track.title);
-  const title = el("span", "track-title");
-  const link = el("a", null, track.title);
-  link.href = songUrl(track);
-  title.append(link);
-  row.append(el("span", "track-date", fmtDate(track.date)), title, toggle);
-  toggle.addEventListener("click", () => select(track, toggle));
+  cell.append(toggle);
+  row.append(cell);
+
+  if (!compact) {
+    const title = el("span", "track-title");
+    const link = el("a", null, track.title);
+    link.href = songUrl(track);
+    title.append(link);
+    row.append(title);
+  }
+
+  const bar = el("button", "track-bar");
+  bar.type = "button";
+  bar.setAttribute("aria-label", "progress of " + track.title + " (click to jump, arrow keys skip 5s)");
+  const played = el("span", "played");
+  const rest = el("span", "rest");
+  bar.append(played, rest);
+  const time = el("span", "track-time", "--:--");
+  row.append(bar, time);
   li.append(row);
+
+  const r = { track, li, toggle, bar, played, rest, time, frac: 0 };
+  if (!rowsByFile.has(track.file)) rowsByFile.set(track.file, []);
+  rowsByFile.get(track.file).push(r);
+  rowByBar.set(bar, r);
+  if (resizeObs) resizeObs.observe(bar);
+  drawTime(r);
+
+  toggle.addEventListener("click", () => select(r));
+  bar.addEventListener("click", (e) => {
+    if (e.detail === 0) return; // keyboard "click" (enter/space): ignore
+    const rect = bar.getBoundingClientRect();
+    select(r, (e.clientX - rect.left) / rect.width);
+  });
+  bar.addEventListener("keydown", (e) => {
+    if (current !== r) return;
+    if (e.key === "ArrowRight") { audio.currentTime += 5; e.preventDefault(); }
+    if (e.key === "ArrowLeft") { audio.currentTime -= 5; e.preventDefault(); }
+  });
   return li;
 }
 
-function renderGroup(heading, tracks) {
-  const frag = document.createDocumentFragment();
-  if (!tracks.length) return frag;
-  frag.append(el("h2", null, heading));
+// forget the old rows before drawing new ones
+function clearRows() {
+  rowsByFile.clear();
+  if (resizeObs) resizeObs.disconnect();
+}
+
+// ---- music page list ----
+
+function renderList(tracks) {
+  clearRows();
+  root.textContent = "";
+  if (!tracks.length) {
+    root.textContent = "nothing here yet.";
+    return;
+  }
+  const head = el("h2", "list-head");
+  head.append(el("span", null, "demos & releases"), volBox);
   const ul = el("ul");
-  tracks.forEach((t) => ul.append(renderTrack(t)));
-  frag.append(ul);
-  return frag;
+  tracks.forEach((t) => ul.append(renderTrack(t, false)));
+  root.append(head, ul);
+  allRows().forEach(drawBar);
+  measureDurations(tracks);
 }
 
 // ---- single song page (song.html) ----
 
 function renderSong(track) {
+  clearRows();
   const box = el("div", "song");
   box.append(el("h2", null, track.title));
-  box.append(el("p", "song-meta", fmtDate(track.date) + " " + (track.type === "demo" ? "demo" : "release")));
 
-  const toggle = el("button", "track-toggle", "[play]");
-  toggle.type = "button";
-  toggle.setAttribute("aria-label", "play " + track.title);
-  toggle.addEventListener("click", () => select(track, toggle));
-  const line = el("p", "song-player");
-  line.append(toggle);
-  box.append(line);
+  const meta = el("p", "song-meta");
+  meta.append(el("span", null, fmtDate(track.date) + " " + (track.type === "demo" ? "demo" : "release")), volBox);
+  box.append(meta);
+
+  const ul = el("ul", "song-track");
+  ul.append(renderTrack(track, true));
+  box.append(ul);
 
   if (track.notes) box.append(el("p", "track-notes", track.notes));
 
@@ -318,19 +485,24 @@ function loadTracks(show, fail) {
     });
 }
 
+// stop and forget the loaded song (before the rows it belongs to are replaced)
+function unload() {
+  if (!current) return;
+  current = null;
+  pendingSeek = null;
+  audio.pause();
+  audio.removeAttribute("src");
+  try { audio.load(); } catch (e) {}
+}
+
 if (root) {
   loadTracks(
     (tracks, { changed }) => {
       if (!changed) return; // the remembered list was already right: leave the page alone
       // don't rebuild the list under someone who's listening; the new list shows next visit
       if (current && !audio.paused) return;
-      if (current) { current = null; np.hidden = true; document.body.classList.remove("has-player"); audio.removeAttribute("src"); }
-      root.textContent = "";
-      root.append(
-        renderGroup("releases", tracks.filter((t) => t.type !== "demo")),
-        renderGroup("demos", tracks.filter((t) => t.type === "demo"))
-      );
-      if (!tracks.length) root.textContent = "nothing here yet.";
+      unload();
+      renderList(tracks);
     },
     () => { root.textContent = "could not load tracks."; }
   );
@@ -347,6 +519,7 @@ if (songRoot) {
       // a remembered list can be out of date (e.g. a brand-new song): keep "loading..." until the fresh one
       if (!track && !fresh) return;
       if (current && !audio.paused) return;
+      unload();
       songRoot.textContent = "";
       if (!track) {
         songRoot.append(el("p", null, "song not found."));
@@ -358,6 +531,8 @@ if (songRoot) {
       shown = track;
       document.title = track.title + " - tywwit.com";
       songRoot.append(renderSong(track));
+      allRows().forEach(drawBar);
+      measureDurations([track]);
     },
     () => { songRoot.textContent = "could not load song."; }
   );

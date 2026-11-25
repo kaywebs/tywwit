@@ -53,8 +53,6 @@ button {
   position: fixed;
   top: 8vh;
   left: 4.4vw;
-  line-height: 1.55;
-  font-size: 1.15rem;
 }
 .site-nav a { display: block; width: fit-content; }
 .site-nav a[aria-current="page"] { color: var(--current); }
@@ -64,8 +62,7 @@ button {
 .site-footer {
   position: fixed;
   bottom: 1.5vh;
-  left: 3.7vw;
-  font-size: 0.75rem;
+  left: 4.4vw;
 }
 
 main {
@@ -95,22 +92,44 @@ ul { list-style: none; margin: 0; padding: 0; }
   display: flex;
   gap: 1ch;
   align-items: baseline;
-}
-.track-date { color: var(--dim); flex: none; }
-.track-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
   white-space: nowrap;
 }
-/* dot leader between title and [play] */
-.track-title::after {
-  content: " ........................................................................................................................";
+.track-date { color: var(--dim); flex: none; }
+/* fixed width, so the title doesn't shift when [play] becomes [pause] */
+.toggle-cell { flex: none; width: 7ch; }
+.track-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the dots after the title are the progress bar: "=" fills in as the song plays */
+.track-bar {
+  flex: 1 1 0;
+  min-width: 10ch; /* long titles get cut off before the bar gets shorter than this */
+  overflow: hidden;
+  text-align: left;
+  white-space: pre;
   color: var(--dim);
 }
-.track-toggle { flex: none; }
+.track-bar .played { color: var(--fg); }
+.track-bar:hover .played,
+.track-bar:focus-visible .played { color: inherit; }
+.track-time { flex: none; text-align: right; color: var(--dim); }
+.track.playing .track-time { color: var(--fg); }
 
-.seek { color: var(--fg); }
+/* heading line: "demos & releases" on the left, volume on the right */
+.list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2ch;
+}
+.vol-box { white-space: nowrap; }
+.vol-box[hidden] { display: none; }
+.vol-box .vol-mute { color: var(--dim); }
+.vol-box .vol-mute:hover,
+.vol-box .vol-mute:focus-visible { color: var(--on-accent); }
 
 .other p { margin: 0 0 1em; }
 
@@ -127,6 +146,8 @@ ul { list-style: none; margin: 0; padding: 0; }
     padding: 40px 16px 0;
     display: block;
   }
+  .track-date { display: none; }
+  .track-bar { min-width: 4ch; }
 }
 
 /* ---- theme fade: only active for a moment while switching light/dark,
@@ -148,61 +169,16 @@ ul { list-style: none; margin: 0; padding: 0; }
 
 /* ---- single song page (song.html) ---- */
 .song h2 { margin: 0 0 0.25em; }
-.song-meta { color: var(--dim); margin: 0 0 1.5em; }
-.song-player { margin: 0 0 1em; }
-.song .track-notes { margin: 0 0 1em; }
-.song-back { margin: 2.5em 0 0; }
-
-/* ---- now-playing line, fixed at the bottom of the track column ---- */
-.now-playing {
-  position: fixed;
-  bottom: 1.5vh;
-  left: 36.5vw;
-  width: 33.5vw;
+.song-meta {
+  color: var(--dim);
+  margin: 0 0 1.5em;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 1ch;
-  align-items: baseline;
-  white-space: nowrap;
-  background: var(--bg);
-}
-.now-playing[hidden] { display: none; }
-/* line 2: progress bar on the left, volume on the right */
-.np-line2 {
-  flex-basis: 100%;
-  display: flex;
-  flex-wrap: wrap;
   justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
   gap: 0 2ch;
 }
-.np-vol[hidden] { display: none; }
-.np-vol .vol-mute { color: var(--dim); }
-.np-vol .vol-mute:hover,
-.np-vol .vol-mute:focus-visible { color: var(--on-accent); }
-.np-title-wrap {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding-left: 2px;
-  margin-left: -2px;
-}
-.now-playing .seek,
-.now-playing .track-time { flex: none; }
-.now-playing .track-time { color: var(--dim); }
-/* keep the end of a long list from hiding behind the bar */
-body.has-player main { padding-bottom: calc(6vh + 4.5em); }
-
-@media (max-width: 700px) {
-  .now-playing {
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: auto;
-    padding: 10px 16px;
-  }
-  /* line 1: [pause] title 00:02 / 02:56   line 2: the bar; volume wraps below if it doesn't fit */
-  .np-title-wrap { flex: 1 1 0; }
-  body.has-player { padding-bottom: 6.5em; }
-  body.has-player main { padding-bottom: 0; }
-}
+.song-meta .vol-box { color: var(--fg); }
+.song-track { margin: 0 0 1em; }
+.song .track-notes { margin: 0 0 1em; }
+.song-back { margin: 2.5em 0 0; }
