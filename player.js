@@ -227,9 +227,13 @@ function drawBar(r) {
 function drawTime(r) {
   const before = r.time.textContent.length;
   if (r.dragging) {
-    // preview the time you'd jump to
+    // preview the time you'd jump to. Keep the text the same width as before the
+    // drag ("01:00" on a song that isn't playing, "01:00 / 01:40" on the playing
+    // one); if it grew, the dots would shrink under the pointer mid-drag.
     const d = r === current && isFinite(audio.duration) ? audio.duration : knownDuration(r.track);
-    r.time.textContent = d ? fmtTime(r.dragFrac * d) + " / " + fmtTime(d) : "--:--";
+    if (!d) r.time.textContent = r === current ? "--:-- / --:--" : "--:--";
+    else if (r === current) r.time.textContent = fmtTime(r.dragFrac * d) + " / " + fmtTime(d);
+    else r.time.textContent = fmtTime(r.dragFrac * d);
   } else if (r === current) {
     const d = isFinite(audio.duration) ? audio.duration : knownDuration(r.track);
     // until the new file has loaded, audio.currentTime can still be the previous song's
