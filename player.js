@@ -5,15 +5,16 @@ const R2_BASE = "https://audio.tywwit.com/";
 const LOCAL = ["localhost", "127.0.0.1", ""].includes(location.hostname);
 const AUDIO_BASE = LOCAL ? "/audio/" : R2_BASE;
 
+// <audio> lives outside <main>, so it keeps playing when links swap the page
+// content (see "page switching" at the end of this file).
 const audio = document.getElementById("audio");
-const root = document.getElementById("tracks");
-const songRoot = document.getElementById("song");
 
 // Each track row looks like:
 //   2026.11 [pause] kehler is a weeb ======............ 00:42 / 02:56
 // The dots are the progress bar: they fill with "=" as the song plays.
-let current = null;     // the row whose song is loaded in <audio>
-let pendingSeek = null; // 0..1, applied once the loading song's length is known
+let currentTrack = null; // the song loaded in <audio> (survives page switches)
+let current = null;      // the row on screen showing that song (list row, song page row, or mini row)
+let pendingSeek = null;  // 0..1, applied once the loading song's length is known
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -38,7 +39,7 @@ function audioUrl(track) {
   return AUDIO_BASE + track.file.split("/").map(encodeURIComponent).join("/");
 }
 
-// ---- volume: "vol [=======---]" on the heading line ----
+// ---- volume: "vol [=======...]" on the heading line ----
 // "vol" mutes/unmutes, the bar sets the level (click a cell, or arrow keys)
 
 const VOL_CELLS = 10;
@@ -67,7 +68,10 @@ function setLevel(v) {
 
 function drawVolume() {
   const filled = audio.muted ? 0 : Math.round(level * VOL_CELLS);
-  volBar.textContent = "[" + "=".repeat(filled) + "-".repeat(VOL_CELLS - filled) + "]";
+  // same look as the song progress bars: "=" filled, dimmed "." empty
+  const full = el("span", "played", "=".repeat(filled));
+  const empty = el("span", "rest", ".".repeat(VOL_CELLS - filled));
+  volBar.replaceChildren("[", full, empty, "]");
   volBar.setAttribute("aria-valuetext", audio.muted ? "muted" : Math.round(level * 100) + "%");
   volMute.textContent = audio.muted ? "off" : "vol";
   volMute.setAttribute("aria-label", audio.muted ? "unmute" : "mute");
@@ -158,7 +162,7 @@ let chPx = 0; // width of one character in the row font
 function measureCh() {
   const probe = el("span", null, "0000000000");
   probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
-  (root || songRoot || document.body).append(probe);
+  (document.querySelector("main") || document.body).append(probe);
   chPx = probe.getBoundingClientRect().width / 10 || 9.6;
   probe.remove();
 }
@@ -228,9 +232,25 @@ function play() {
   audio.play().catch(() => {});
 }
 
+// make r the row that shows the loaded song (e.g. after switching pages)
+function attach(r) {
+  if (current && current !== r) {
+    const prev = current;
+    current = null;
+    resetRow(prev);
+  }
+  current = r;
+  r.li.classList.add("playing");
+  if (isFinite(audio.duration) && audio.duration > 0) r.frac = audio.currentTime / audio.duration;
+  drawBar(r);
+  drawTime(r);
+  updateToggle();
+}
+
 // start (or pause/resume) a row's song; seekFrac (0..1) jumps to that point
 function select(r, seekFrac) {
-  if (current === r) {
+  if (currentTrack && r.track.file === currentTrack.file) {
+    if (current !== r) attach(r);
     if (seekFrac != null) {
       seekTo(seekFrac);
       if (audio.paused) play();
@@ -246,6 +266,7 @@ function select(r, seekFrac) {
     current = null;
     resetRow(prev);
   }
+  currentTrack = r.track;
   current = r;
   r.li.classList.add("playing");
   pendingSeek = seekFrac != null ? seekFrac : null;
@@ -254,6 +275,7 @@ function select(r, seekFrac) {
   drawBar(r);
   drawTime(r);
   play();
+  syncMini();
 }
 
 function seekTo(fraction) {
@@ -270,8 +292,8 @@ function updateProgress() {
 }
 
 audio.addEventListener("loadedmetadata", () => {
-  if (!current) return;
-  saveDuration(current.track, audio.duration);
+  if (!currentTrack) return;
+  saveDuration(currentTrack, audio.duration);
   if (pendingSeek != null) {
     const f = pendingSeek;
     pendingSeek = null;
@@ -280,7 +302,7 @@ audio.addEventListener("loadedmetadata", () => {
   updateProgress();
 });
 audio.addEventListener("durationchange", () => {
-  if (current) saveDuration(current.track, audio.duration);
+  if (currentTrack) saveDuration(currentTrack, audio.duration);
 });
 audio.addEventListener("timeupdate", updateProgress);
 audio.addEventListener("play", updateToggle);
@@ -292,11 +314,30 @@ audio.addEventListener("error", () => {
 
 // ---- track rows ----
 
-// compact: no date or title (used on a song's own page)
-function renderTrack(track, compact) {
+function register(r) {
+  if (!rowsByFile.has(r.track.file)) rowsByFile.set(r.track.file, []);
+  rowsByFile.get(r.track.file).push(r);
+  rowByBar.set(r.bar, r);
+  if (resizeObs) resizeObs.observe(r.bar);
+}
+
+function unregister(r) {
+  const list = rowsByFile.get(r.track.file);
+  if (list) {
+    const i = list.indexOf(r);
+    if (i >= 0) list.splice(i, 1);
+    if (!list.length) rowsByFile.delete(r.track.file);
+  }
+  if (resizeObs) resizeObs.unobserve(r.bar);
+}
+
+// opts.date / opts.title: which columns to show
+//   music list: date + title    song page: neither    mini row: title only
+// returns the row refs; the element to insert is r.li
+function renderTrack(track, opts) {
   const li = el("li", "track");
   const row = el("div", "track-row");
-  if (!compact) row.append(el("span", "track-date", fmtDate(track.date)));
+  if (opts.date) row.append(el("span", "track-date", fmtDate(track.date)));
 
   const cell = el("span", "toggle-cell");
   const toggle = el("button", "track-toggle", "[play]");
@@ -305,7 +346,7 @@ function renderTrack(track, compact) {
   cell.append(toggle);
   row.append(cell);
 
-  if (!compact) {
+  if (opts.title) {
     const title = el("span", "track-title");
     const link = el("a", null, track.title);
     link.href = songUrl(track);
@@ -323,11 +364,8 @@ function renderTrack(track, compact) {
   row.append(bar, time);
   li.append(row);
 
-  const r = { track, li, toggle, bar, played, rest, time, frac: 0 };
-  if (!rowsByFile.has(track.file)) rowsByFile.set(track.file, []);
-  rowsByFile.get(track.file).push(r);
-  rowByBar.set(bar, r);
-  if (resizeObs) resizeObs.observe(bar);
+  const r = { track, li, toggle, bar, played, rest, time, frac: 0, mini: !!opts.mini };
+  register(r);
   drawTime(r);
 
   toggle.addEventListener("click", () => select(r));
@@ -341,36 +379,89 @@ function renderTrack(track, compact) {
     if (e.key === "ArrowRight") { audio.currentTime += 5; e.preventDefault(); }
     if (e.key === "ArrowLeft") { audio.currentTime -= 5; e.preventDefault(); }
   });
-  return li;
+  return r;
 }
 
-// forget the old rows before drawing new ones
+// forget the page's old rows before drawing new ones (the mini row stays)
 function clearRows() {
   rowsByFile.clear();
   if (resizeObs) resizeObs.disconnect();
+  if (current && !current.mini) current = null;
+  if (miniRow) register(miniRow);
+}
+
+// ---- mini row: the playing song, at the bottom of pages that don't list it ----
+//   [pause] jamdemo1 ====........ 01:23 / 03:40
+
+const miniBox = el("div", "now-playing");
+miniBox.hidden = true;
+miniBox.setAttribute("aria-label", "now playing");
+const miniList = el("ul");
+miniBox.append(miniList);
+document.body.append(miniBox);
+let miniRow = null;
+
+function hideMini() {
+  if (miniRow) {
+    if (current === miniRow) current = null;
+    unregister(miniRow);
+    miniRow = null;
+  }
+  miniList.textContent = "";
+  miniBox.hidden = true;
+  document.body.classList.remove("has-mini");
+}
+
+// show the mini row only when a song is loaded and this page has no row for it
+function syncMini() {
+  const onPage = currentTrack
+    ? (rowsByFile.get(currentTrack.file) || []).filter((r) => !r.mini)
+    : [];
+  if (!currentTrack || onPage.length) {
+    hideMini();
+    return;
+  }
+  if (miniRow && miniRow.track.file === currentTrack.file) return;
+  hideMini();
+  miniBox.hidden = false; // visible before drawing, so the dots can be measured
+  document.body.classList.add("has-mini");
+  miniRow = renderTrack(currentTrack, { title: true, mini: true });
+  miniList.append(miniRow.li);
+  attach(miniRow);
+}
+
+// after a page is drawn: hand the loaded song to its row on this page, or to the mini row
+function bindCurrent() {
+  if (currentTrack) {
+    const onPage = (rowsByFile.get(currentTrack.file) || []).filter((r) => !r.mini);
+    if (onPage.length) attach(onPage[0]);
+  }
+  syncMini();
 }
 
 // ---- music page list ----
 
-function renderList(tracks) {
+function renderList(listEl, tracks) {
   clearRows();
-  root.textContent = "";
+  listEl.textContent = "";
   if (!tracks.length) {
-    root.textContent = "nothing here yet.";
+    listEl.textContent = "nothing here yet.";
+    bindCurrent();
     return;
   }
   const head = el("h2", "list-head");
   head.append(el("span", null, "demos & releases"), volBox);
   const ul = el("ul");
-  tracks.forEach((t) => ul.append(renderTrack(t, false)));
-  root.append(head, ul);
+  tracks.forEach((t) => ul.append(renderTrack(t, { date: true, title: true }).li));
+  listEl.append(head, ul);
   allRows().forEach(drawBar);
+  bindCurrent();
   measureDurations(tracks);
 }
 
 // ---- single song page (song.html) ----
 
-function renderSong(track) {
+function renderSong(songEl, track) {
   clearRows();
   const box = el("div", "song");
   box.append(el("h2", null, track.title));
@@ -380,7 +471,7 @@ function renderSong(track) {
   box.append(meta);
 
   const ul = el("ul", "song-track");
-  ul.append(renderTrack(track, true));
+  ul.append(renderTrack(track, {}).li);
   box.append(ul);
 
   if (track.notes) box.append(el("p", "track-notes", track.notes));
@@ -390,7 +481,12 @@ function renderSong(track) {
   const p = el("p", "song-back");
   p.append(back);
   box.append(p);
-  return box;
+
+  songEl.textContent = "";
+  songEl.append(box);
+  allRows().forEach(drawBar);
+  bindCurrent();
+  measureDurations([track]);
 }
 
 // ---- data ----
@@ -485,55 +581,122 @@ function loadTracks(show, fail) {
     });
 }
 
-// stop and forget the loaded song (before the rows it belongs to are replaced)
-function unload() {
-  if (!current) return;
-  current = null;
-  pendingSeek = null;
-  audio.pause();
-  audio.removeAttribute("src");
-  try { audio.load(); } catch (e) {}
+// ---- set up whatever page is showing ----
+
+let pageGen = 0; // bumped on every page switch, so late answers for an old page are ignored
+
+function initPage() {
+  const gen = ++pageGen;
+  clearRows();
+  const listEl = document.getElementById("tracks");
+  const songEl = document.getElementById("song");
+
+  if (listEl) {
+    let rendered = false;
+    loadTracks(
+      (tracks, { changed }) => {
+        if (gen !== pageGen) return;
+        if (rendered && !changed) return; // the remembered list was already right
+        rendered = true;
+        renderList(listEl, tracks); // the playing song (if any) carries on in its new row
+      },
+      () => { if (gen === pageGen && !rendered) listEl.textContent = "could not load tracks."; }
+    );
+  }
+
+  if (songEl) {
+    const m = location.pathname.match(/^\/song\/([^/]+)/);
+    const slug = (m ? decodeURIComponent(m[1]) : new URLSearchParams(location.search).get("t") || "").toLowerCase();
+    let shown = null;
+    loadTracks(
+      (tracks, { fresh }) => {
+        if (gen !== pageGen) return;
+        const track = tracks.find((t) => t.slug === slug);
+        if (track && shown && JSON.stringify(track) === JSON.stringify(shown)) return; // same song, keep the page as is
+        // a remembered list can be out of date (e.g. a brand-new song): keep "loading..." until the fresh one
+        if (!track && !fresh) return;
+        if (!track) {
+          clearRows();
+          songEl.textContent = "";
+          songEl.append(el("p", null, "song not found."));
+          const back = el("a", null, "<- all music");
+          back.href = "/music/";
+          songEl.append(back);
+          bindCurrent();
+          return;
+        }
+        shown = track;
+        document.title = track.title + " - tywwit.com";
+        renderSong(songEl, track);
+      },
+      () => { if (gen === pageGen && !shown) songEl.textContent = "could not load song."; }
+    );
+  }
+
+  bindCurrent(); // pages without a list (home, other) get the mini row if a song is loaded
 }
 
-if (root) {
-  loadTracks(
-    (tracks, { changed }) => {
-      if (!changed) return; // the remembered list was already right: leave the page alone
-      // don't rebuild the list under someone who's listening; the new list shows next visit
-      if (current && !audio.paused) return;
-      unload();
-      renderList(tracks);
-    },
-    () => { root.textContent = "could not load tracks."; }
-  );
+// ---- page switching ----
+// Links between pages of this site don't reload the browser page: the new page's
+// <main> and nav are fetched and swapped in, so <audio> (and the song) keeps going.
+// Anything unusual falls back to a normal page load.
+
+function isSitePage(url) {
+  if (url.origin !== location.origin) return false;
+  const p = url.pathname;
+  return p === "/" || p === "/index.html" || /^\/(music|other)\/(index\.html)?$/.test(p) ||
+    /^\/song\/[^/]+\/?$/.test(p) || p === "/song.html";
 }
 
-if (songRoot) {
-  const m = location.pathname.match(/^\/song\/([^/]+)/);
-  const slug = (m ? decodeURIComponent(m[1]) : new URLSearchParams(location.search).get("t") || "").toLowerCase();
-  let shown = null;
-  loadTracks(
-    (tracks, { fresh }) => {
-      const track = tracks.find((t) => t.slug === slug);
-      if (track && shown && JSON.stringify(track) === JSON.stringify(shown)) return; // same song, keep the page as is
-      // a remembered list can be out of date (e.g. a brand-new song): keep "loading..." until the fresh one
-      if (!track && !fresh) return;
-      if (current && !audio.paused) return;
-      unload();
-      songRoot.textContent = "";
-      if (!track) {
-        songRoot.append(el("p", null, "song not found."));
-        const back = el("a", null, "<- all music");
-        back.href = "/music/";
-        songRoot.append(back);
-        return;
-      }
-      shown = track;
-      document.title = track.title + " - tywwit.com";
-      songRoot.append(renderSong(track));
-      allRows().forEach(drawBar);
-      measureDurations([track]);
-    },
-    () => { songRoot.textContent = "could not load song."; }
-  );
+let loadedUrl = location.pathname + location.search;
+let navToken = 0;
+
+async function navigate(href, push) {
+  const url = new URL(href, location.href);
+  const token = ++navToken;
+  let doc;
+  try {
+    const res = await fetch(url.href, { headers: { Accept: "text/html" } });
+    if (!res.ok && res.status !== 404) throw new Error(res.status);
+    doc = new DOMParser().parseFromString(await res.text(), "text/html");
+  } catch (e) {
+    location.href = url.href; // couldn't fetch it: just load it normally
+    return;
+  }
+  if (token !== navToken) return; // another link was clicked meanwhile
+  const newMain = doc.querySelector("main");
+  const newNav = doc.querySelector(".site-nav");
+  const main = document.querySelector("main");
+  const nav = document.querySelector(".site-nav");
+  if (!newMain || !main) {
+    location.href = url.href;
+    return;
+  }
+  if (push) history.pushState(null, "", url.href);
+  loadedUrl = url.pathname + url.search;
+  document.title = doc.title;
+  main.replaceWith(document.adoptNode(newMain));
+  if (newNav && nav) nav.replaceWith(document.adoptNode(newNav));
+  if (window.startMarquee) window.startMarquee();
+  if (push) window.scrollTo(0, 0);
+  initPage();
 }
+
+document.addEventListener("click", (e) => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const a = e.target.closest && e.target.closest("a[href]");
+  if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download")) return;
+  const url = new URL(a.href, location.href);
+  if (!isSitePage(url)) return;
+  // a link to the page we're already on (but maybe a different #anchor): leave it to the browser
+  if (url.pathname + url.search === location.pathname + location.search && url.hash) return;
+  e.preventDefault();
+  navigate(url.href, true);
+});
+
+window.addEventListener("popstate", () => {
+  if (location.pathname + location.search === loadedUrl) return; // only the #hash changed
+  navigate(location.href, false);
+});
+
+initPage();

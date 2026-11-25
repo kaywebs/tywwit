@@ -37,9 +37,13 @@
 })();
 
 // Current page indicator: the active nav item scrolls right-to-left inside its own width.
-document.addEventListener("DOMContentLoaded", function () {
+// player.js calls window.startMarquee() again after it swaps in a new page's nav.
+var marqueeTimer;
+window.startMarquee = function () {
+  clearInterval(marqueeTimer);
   var link = document.querySelector('.site-nav a[aria-current="page"]');
   if (!link || link.classList.contains("site-title")) return; // the site title never scrolls
+  if (link.classList.contains("marquee")) return; // already running on this link
   var text = link.textContent;
   // dashed labels loop seamlessly; plain ones (tywwit.com) get a space between repeats
   var unit = /^-|-$/.test(text) ? text : text + " ";
@@ -56,9 +60,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // step one whole character to the left at a time, like a terminal ticker
   var STEP_MS = 250;
   var pos = 0;
-  setInterval(function () {
+  marqueeTimer = setInterval(function () {
     pos = (pos + 1) % unit.length;
     var loop = unit.slice(pos) + unit.slice(0, pos);
     cells.textContent = loop.slice(0, text.length);
   }, STEP_MS);
-});
+};
+document.addEventListener("DOMContentLoaded", window.startMarquee);

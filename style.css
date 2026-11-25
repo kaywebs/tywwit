@@ -182,3 +182,26 @@ ul { list-style: none; margin: 0; padding: 0; }
 .song-track { margin: 0 0 1em; }
 .song .track-notes { margin: 0 0 1em; }
 .song-back { margin: 2.5em 0 0; }
+
+/* ---- mini row: the playing song, at the bottom of pages that don't show it ---- */
+.now-playing {
+  position: fixed;
+  bottom: 1.5vh;
+  left: 36.5vw;
+  width: 33.5vw;
+  background: var(--bg);
+}
+.now-playing[hidden] { display: none; }
+body.has-mini main { padding-bottom: calc(6vh + 2em); }
+
+@media (max-width: 700px) {
+  .now-playing {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    padding: 10px 16px;
+  }
+  body.has-mini { padding-bottom: 3.5em; }
+  body.has-mini main { padding-bottom: 0; }
+}
